@@ -1,3 +1,7 @@
+> [!NOTE]
+> **This is a personal fork** focused on the Docker deployment side of things, featuring specific changes for **RDNA 4 (AMD ROCm)** support and history deletion resilience bug fixes.
+> Because these changes are "vibe-coded" to suit my personal setup, I am not submitting pull requests upstream to the original author. You are welcome to use this repository, but please keep this context in mind.
+
 <p align="center">
   <img src=".github/assets/icon-dark.webp" alt="Voicebox" width="120" height="120" />
 </p>
