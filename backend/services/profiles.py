@@ -429,6 +429,13 @@ async def delete_profile(
     if not profile:
         return False
 
+    # Import inside function to avoid circular dependency
+    from .history import delete_generations_by_profile
+    try:
+        await delete_generations_by_profile(profile_id, db)
+    except Exception:
+        logger.exception("Failed to delete generations for profile %s during profile deletion", profile_id)
+
     db.query(DBProfileSample).filter_by(profile_id=profile_id).delete()
 
     db.delete(profile)
@@ -436,7 +443,10 @@ async def delete_profile(
 
     profile_dir = config.get_profiles_dir() / profile_id
     if profile_dir.exists():
-        shutil.rmtree(profile_dir)
+        try:
+            shutil.rmtree(profile_dir)
+        except OSError:
+            logger.exception("Failed to remove profile directory %s", profile_dir)
 
     # Clean up combined audio cache files for this profile
     clear_profile_cache(profile_id)
@@ -467,7 +477,10 @@ async def delete_profile_sample(
 
     audio_path = config.resolve_storage_path(sample.audio_path)
     if audio_path is not None and audio_path.exists():
-        audio_path.unlink()
+        try:
+            audio_path.unlink()
+        except OSError:
+            logger.exception("Failed to remove profile sample audio %s", audio_path)
 
     db.delete(sample)
     db.commit()
@@ -651,7 +664,10 @@ async def upload_avatar(
     if profile.avatar_path:
         old_avatar = config.resolve_storage_path(profile.avatar_path)
         if old_avatar is not None and old_avatar.exists():
-            old_avatar.unlink()
+            try:
+                old_avatar.unlink()
+            except OSError:
+                logger.exception("Failed to remove old avatar %s", old_avatar)
 
     # Determine file extension from uploaded file
     from PIL import Image
@@ -700,7 +716,10 @@ async def delete_avatar(
 
     avatar_path = config.resolve_storage_path(profile.avatar_path)
     if avatar_path is not None and avatar_path.exists():
-        avatar_path.unlink()
+        try:
+            avatar_path.unlink()
+        except OSError:
+            logger.exception("Failed to remove avatar %s", avatar_path)
 
     profile.avatar_path = None
     profile.updated_at = datetime.utcnow()

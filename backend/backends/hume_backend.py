@@ -77,8 +77,31 @@ class HumeTadaBackend:
         return TADA_MODEL_REPOS.get(model_size, TADA_1B_REPO)
 
     def _is_model_cached(self, model_size: str = "1B") -> bool:
+        # Check for manually downloaded TADA 3B in local path
+        if model_size == "3B":
+            local_path = "/app/data/captures/tada-3b-ml"
+            import os
+            required_files = [
+                "model-00001-of-00002.safetensors",
+                "model-00002-of-00002.safetensors",
+                "model.safetensors.index.json",
+                "config.json",
+                "generation_config.json"
+            ]
+            if os.path.exists(local_path) and all(os.path.exists(os.path.join(local_path, f)) for f in required_files):
+                return True
+
         repo = TADA_MODEL_REPOS.get(model_size, TADA_1B_REPO)
-        model_cached = is_model_cached(repo, required_files=_TADA_MODEL_WEIGHT_FILES)
+        if model_size == "3B":
+            required_files = [
+                "model-00001-of-00002.safetensors",
+                "model-00002-of-00002.safetensors",
+                "model.safetensors.index.json",
+            ]
+        else:
+            required_files = _TADA_MODEL_WEIGHT_FILES
+
+        model_cached = is_model_cached(repo, required_files=required_files)
         codec_cached = is_model_cached(TADA_CODEC_REPO, required_files=_TADA_CODEC_WEIGHT_FILES)
         return model_cached and codec_cached
 
@@ -97,9 +120,17 @@ class HumeTadaBackend:
 
     def _load_model_sync(self, model_size: str = "1B"):
         """Synchronous model loading with progress tracking."""
-        model_name = f"tada-{model_size.lower()}"
+        model_name = "tada-3b-ml" if model_size == "3B" else f"tada-{model_size.lower()}"
         is_cached = self._is_model_cached(model_size)
         repo = TADA_MODEL_REPOS.get(model_size, TADA_1B_REPO)
+
+        # Check for local manual path first
+        local_path = "/app/data/captures/tada-3b-ml"
+        import os
+        use_local = model_size == "3B" and os.path.exists(local_path) and all(
+            os.path.exists(os.path.join(local_path, f))
+            for f in ["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors", "model.safetensors.index.json", "config.json", "generation_config.json"]
+        )
 
         with model_load_progress(model_name, is_cached):
             # Install DAC shim before importing tada — tada's encoder/decoder
@@ -123,15 +154,21 @@ class HumeTadaBackend:
                 repo_id=TADA_CODEC_REPO,
                 token=None,
                 allow_patterns=["*.safetensors", "*.json", "*.txt", "*.bin"],
+                max_workers=1,
             )
 
-            # Download model weights if not cached
-            logger.info(f"Downloading TADA {model_size} model...")
-            snapshot_download(
-                repo_id=repo,
-                token=None,
-                allow_patterns=["*.safetensors", "*.json", "*.txt", "*.bin", "*.model"],
-            )
+            # Download or use local model weights
+            if use_local:
+                logger.info(f"Using manually downloaded TADA 3B from local path: {local_path}")
+                repo = local_path
+            else:
+                logger.info(f"Downloading TADA {model_size} model...")
+                snapshot_download(
+                    repo_id=repo,
+                    token=None,
+                    allow_patterns=["*.safetensors", "*.json", "*.txt", "*.bin", "*.model"],
+                    max_workers=1,
+                )
 
             # TADA hardcodes "meta-llama/Llama-3.2-1B" as the tokenizer
             # source in its Aligner and TadaForCausalLM.from_pretrained().
@@ -143,6 +180,7 @@ class HumeTadaBackend:
                 repo_id="unsloth/Llama-3.2-1B",
                 token=None,
                 allow_patterns=["tokenizer*", "special_tokens*"],
+                max_workers=1,
             )
 
             # Determine dtype — use bf16 on CUDA/XPU for ~50% memory savings

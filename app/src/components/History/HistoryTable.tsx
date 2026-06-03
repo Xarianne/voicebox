@@ -251,7 +251,15 @@ export function HistoryTable() {
 
   const handleDeleteConfirm = () => {
     if (generationToDelete) {
-      deleteGeneration.mutate(generationToDelete.id);
+      deleteGeneration.mutate(generationToDelete.id, {
+        onError: (error) => {
+          toast({
+            title: 'Failed to delete generation',
+            description: error instanceof Error ? error.message : 'Could not delete generation',
+            variant: 'destructive',
+          });
+        },
+      });
       setDeleteDialogOpen(false);
       setGenerationToDelete(null);
     }

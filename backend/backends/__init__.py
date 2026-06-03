@@ -636,6 +636,9 @@ def get_model_load_func(config: ModelConfig):
     if config.engine == "qwen_custom_voice":
         return lambda: get_tts_backend_for_engine(config.engine).load_model(config.model_size)
 
+    if config.engine == "tada":
+        return lambda: get_tts_backend_for_engine(config.engine).load_model(config.model_size)
+
     if config.engine == "qwen_llm":
         return lambda: llm_service.get_llm_model().load_model(config.model_size)
 

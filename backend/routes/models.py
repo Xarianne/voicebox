@@ -272,6 +272,25 @@ async def get_model_status():
             size_mb = None
             loaded = False
 
+            # Check for local manual path first (TADA 3B)
+            if config["model_name"] == "tada-3b-ml":
+                local_path = Path("/app/data/captures/tada-3b-ml")
+                if local_path.exists():
+                    required_files = [
+                        "model-00001-of-00002.safetensors",
+                        "model-00002-of-00002.safetensors",
+                        "model.safetensors.index.json",
+                        "config.json",
+                        "generation_config.json"
+                    ]
+                    if all((local_path / f).exists() for f in required_files):
+                        downloaded = True
+                        try:
+                            total_size = sum((local_path / f).stat().st_size for f in required_files)
+                            size_mb = total_size / (1024 * 1024)
+                        except Exception:
+                            size_mb = 8800.0
+
             if cache_info:
                 repo_id = config["hf_repo_id"]
                 for repo in cache_info.repos:

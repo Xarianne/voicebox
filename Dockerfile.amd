@@ -1,0 +1,87 @@
+# ============================================================
+# Voicebox — Local TTS Server with Web UI (AMD ROCm GPU)
+# 3-stage build: Frontend → Python deps → Runtime
+# ============================================================
+
+# === Stage 1: Build frontend ===
+FROM oven/bun:1 AS frontend
+
+WORKDIR /build
+
+# Copy workspace config and frontend source
+COPY package.json bun.lock CHANGELOG.md ./
+COPY app/ ./app/
+COPY web/ ./web/
+
+RUN sed -i '/"tauri"/d; /"landing"/d' package.json && \
+    sed -i -z 's/,\n  ]/\n  ]/' package.json
+RUN bun install --no-save
+# Build frontend (skip tsc — upstream has pre-existing type errors)
+RUN cd web && bunx --bun vite build
+
+
+# === Stage 2: Build Python dependencies (AMD ROCm version) ===
+FROM rocm/pytorch:rocm7.2.1_ubuntu24.04_py3.12_pytorch_release_2.9.1 AS backend-builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    build-essential \
+    sox \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip
+
+COPY backend/requirements.txt .
+# Install dependencies using the ROCm-specific PyTorch index
+RUN pip install --no-cache-dir --prefix=/install \
+    --extra-index-url https://download.pytorch.org/whl/rocm7.2 \
+    -r requirements.txt
+
+RUN pip install --no-cache-dir --prefix=/install --no-deps chatterbox-tts
+RUN pip install --no-cache-dir --prefix=/install --no-deps hume-tada
+RUN pip install --no-cache-dir --prefix=/install \
+    git+https://github.com/QwenLM/Qwen3-TTS.git
+
+
+# === Stage 3: Runtime (AMD ROCm version) ===
+FROM rocm/pytorch:rocm7.2.1_ubuntu24.04_py3.12_pytorch_release_2.9.1
+
+# Define build arguments passed from docker-compose
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+
+# Create non-root user (Note: UID/GID should match host for hardware access)
+# We use the -o flag to safely reuse the ID if the Ubuntu base image already claimed it
+RUN groupadd -o -g ${HOST_GID} voicebox && \
+    useradd -o -r -u ${HOST_UID} -g voicebox -m -s /bin/bash voicebox
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    sox \
+    libsox-fmt-all \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=backend-builder /install /usr/local
+COPY --from=frontend --chown=voicebox:voicebox /build/web/dist /app/frontend/
+COPY --chown=voicebox:voicebox backend/ /app/backend/
+
+# FIX: Create the HuggingFace cache directory and give the voicebox user ownership
+RUN mkdir -p /app/data/generations /app/data/profiles /app/data/cache \
+    /home/voicebox/.cache/huggingface /home/voicebox/.cache/torch/kernels \
+    && chown -R voicebox:voicebox /app/data /home/voicebox/.cache
+
+# FIX: Tell the ROCm virtual environment where our manually installed packages are
+ENV PYTHONPATH="/usr/local/lib/python3.12/site-packages:$PYTHONPATH"
+ENV PATH="/usr/local/bin:$PATH"
+
+# Updated memory allocation variable for PyTorch 2.9.1
+ENV PYTORCH_ALLOC_CONF="expandable_segments:True"
+
+USER voicebox
+EXPOSE 17493
+CMD ["python3", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "17493"]

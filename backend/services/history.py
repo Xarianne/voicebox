@@ -14,6 +14,11 @@ from ..models import GenerationRequest, GenerationResponse, HistoryQuery, Histor
 from ..database import Generation as DBGeneration, GenerationVersion as DBGenerationVersion, VoiceProfile as DBVoiceProfile
 from .. import config
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def _get_versions_for_generation(generation_id: str, db: Session) -> tuple:
     """Get versions list and active version ID for a generation."""
@@ -261,7 +266,11 @@ async def delete_generation(
     if generation.audio_path:
         audio_path = config.resolve_storage_path(generation.audio_path)
         if audio_path is not None and audio_path.exists():
-            audio_path.unlink()
+            try:
+                audio_path.unlink()
+            except OSError:
+                logger.exception("Failed to remove generation audio %s", audio_path)
+
 
     # Delete from database
     db.delete(generation)
@@ -332,7 +341,11 @@ async def delete_generations_by_profile(
         # Delete audio file
         audio_path = config.resolve_storage_path(generation.audio_path)
         if audio_path is not None and audio_path.exists():
-            audio_path.unlink()
+            try:
+                audio_path.unlink()
+            except OSError:
+                logger.exception("Failed to remove generation audio %s", audio_path)
+
         
         # Delete from database
         db.delete(generation)

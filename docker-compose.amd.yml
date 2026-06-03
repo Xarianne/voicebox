@@ -1,0 +1,91 @@
+services:
+  # --- NEW: Automatic Permission Fixer ---
+  # This runs once before the main app starts to ensure all Docker
+  # volumes are owned by the correct host user, making fresh deployments seamless.
+  init-perms:
+    image: alpine:latest
+    container_name: voicebox-init
+    user: "root"
+    volumes:
+      - voicebox-data:/app/data
+      - ./output:/app/data/generations:Z
+      - ./captures:/app/data/captures
+      - huggingface-cache:/home/voicebox/.cache/huggingface
+    command: >
+      sh -c "mkdir -p /app/data/cache /app/data/generations /app/data/profiles /home/voicebox/.cache/huggingface &&
+             chown -R ${UID:-1000}:${GID:-1000} /app/data /home/voicebox/.cache/huggingface"
+
+  voicebox:
+    build:
+      context: .
+      dockerfile: Dockerfile.amd
+      args:
+        HOST_UID: "${UID:-1000}"
+        HOST_GID: "${GID:-1000}"
+    container_name: voicebox
+
+    # Wait for the init container to finish fixing permissions before booting
+    depends_on:
+      init-perms:
+        condition: service_completed_successfully
+
+    # This dynamically matches the container user to your host user
+    user: "${UID:-1000}:${GID:-1000}"
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:17493:17493"
+
+    volumes:
+      - voicebox-data:/app/data
+      - ./output:/app/data/generations:Z
+      - ./captures:/app/data/captures
+      - huggingface-cache:/home/voicebox/.cache/huggingface
+
+    environment:
+      - LOG_LEVEL=info
+      - NUMBA_CACHE_DIR=/tmp/numba_cache
+      # --- FORCE HUGGINGFACE TO USE THE PERSISTENT VOLUME ---
+      - HF_HOME=/home/voicebox/.cache/huggingface
+      # --- FORCE RDNA 4 ARCHITECTURE ---
+      - HSA_OVERRIDE_GFX_VERSION=12.0.1
+      # --- REDIRECT MIOPEN CACHE TO WRITABLE, PERSISTENT DIR ---
+      - MIOPEN_USER_DB_PATH=/app/data/cache/miopen_db
+      - MIOPEN_CUSTOM_CACHE_DIR=/app/data/cache/miopen_cache
+      # --- STABILITY FIXES ---
+      # Disables Virtual Memory Management to bypass IOMMU/workspace allocation errors
+      - ROCM_DISABLE_VMM=1
+      # Uses fast heuristics for GPU kernels instead of exhaustive benchmarking
+      - MIOPEN_FIND_MODE=FAST
+      # Allows better management of memory
+      - PYTORCH_ALLOC_CONF=expandable_segments:True
+
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+
+    # --- USE YOUR HOST GID NUMBERS HERE ---
+    group_add:
+      - video
+      - render
+
+    # --- ALLOW ROCm SYSCALLS ---
+    security_opt:
+      - seccomp:unconfined
+
+    networks:
+      - voicebox-net
+
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+
+networks:
+  voicebox-net:
+    driver: bridge
+
+volumes:
+  voicebox-data:
+  huggingface-cache:

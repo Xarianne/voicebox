@@ -18,7 +18,7 @@ class HFProgressTracker:
         self.progress_callback = progress_callback
         self.filter_non_downloads = filter_non_downloads  # Only filter if True
         self._original_tqdm_class = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._total_downloaded = 0
         self._total_size = 0
         self._file_sizes = {}  # Track sizes of individual files

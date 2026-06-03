@@ -21,6 +21,11 @@ from ..database import (
 from ..models import GenerationVersionResponse, EffectConfig
 from .. import config
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def _version_response(v: DBGenerationVersion) -> GenerationVersionResponse:
     """Convert a DB version row to a Pydantic response."""
@@ -160,7 +165,11 @@ def delete_version(version_id: str, db: Session) -> bool:
     # Delete audio file
     audio_path = config.resolve_storage_path(version.audio_path)
     if audio_path is not None and audio_path.exists():
-        audio_path.unlink()
+        try:
+            audio_path.unlink()
+        except OSError:
+            logger.exception("Failed to remove version audio %s", audio_path)
+
 
     db.delete(version)
     db.commit()
@@ -195,8 +204,12 @@ def delete_versions_for_generation(generation_id: str, db: Session) -> int:
     for v in versions:
         audio_path = config.resolve_storage_path(v.audio_path)
         if audio_path is not None and audio_path.exists():
-            audio_path.unlink()
+            try:
+                audio_path.unlink()
+            except OSError:
+                logger.exception("Failed to remove version audio %s", audio_path)
         db.delete(v)
+
         count += 1
     if count > 0:
         db.commit()
