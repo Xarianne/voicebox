@@ -1,6 +1,8 @@
 > [!NOTE]
-> **This is a personal fork** focused on the Docker deployment side of things, featuring specific changes for **RDNA 4 (AMD ROCm)** support and history deletion resilience bug fixes.
-> Because these changes are "vibe-coded" to suit my personal setup, I am not submitting pull requests upstream to the original author. You are welcome to use this repository, but please keep this context in mind.
+> **This is a personal fork** from https://github.com/jamiepine/voicebox. It's focused on the Docker deployment side of things, featuring specific changes for **RDNA 4 (AMD ROCm)** support and history deletion resilience bug fixes.
+> Because these changes are vibe-coded to suit my personal setup, I am not submitting pull requests upstream to the original author. You are welcome to use this repository, but please keep this context in mind.
+>
+> UPDATE: Please note that on 27 June 2026 the mainstream project added a link to a pump and dump crypto token, so I disconnected this fork from upstream. I am not the original creator of this software, as stated by the MIT licence, I am still attributing the original authors. But I will either take this project in its own direction now, or just keep maintaining it for myself.
 
 <p align="center">
   <img src=".github/assets/icon-dark.webp" alt="Voicebox" width="120" height="120" />
